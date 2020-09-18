@@ -11,6 +11,7 @@ static ALIVE_COL: style::Color = style::Color::Rgb {
 pub struct Board {
     prev: Vec<Vec<bool>>,
     alive: Vec<Vec<bool>>,
+    start: Vec<Vec<bool>>,
     pub height: usize,
     pub width: usize,
     pub renders: usize,
@@ -22,31 +23,24 @@ impl Board {
 
         Self {
             prev: vec.clone(),
-            alive: vec,
+            alive: vec.clone(),
+            start: vec,
             width,
             height,
             renders: 0,
         }
     }
 
-    pub fn from_vec(vec: Vec<Vec<bool>>) -> Self {
-        Self {
-            width: vec[0].len(),
-            height: vec.len(),
-            prev: vec.clone(),
-            alive: vec,
-            renders: 0,
-        }
+    pub fn edit(&mut self, vec: Vec<Vec<bool>>) {
+        self.width = vec[0].len();
+        self.height = vec.len();
+        self.alive = vec.clone();
+        self.start = vec;
+        self.renders = 0;
     }
 
     pub fn reset(&mut self) {
-        let mut random = rand::thread_rng();
-
-        for i in 0..self.height {
-            for j in 0..self.width {
-                self.alive[i][j] = random.gen::<f32>() < 0.15;
-            }
-        }
+        self.alive = self.start.clone();
 
         self.renders = 0;
     }
@@ -56,41 +50,8 @@ impl Board {
             [(j + self.width as i32) as usize % self.width]
     }
 
-    pub fn status_at(&self, i: usize, j: usize) -> bool {
-        self.alive[i][j]
-    }
-
     pub fn display(&self, stdout: &mut std::io::Stdout) -> crossterm::Result<()> {
-        queue!(
-            stdout,
-            cursor::SavePosition,
-            cursor::MoveTo(0, 0),
-            style::SetForegroundColor(ALIVE_COL)
-        )?;
-
-        // use ▀▄ as 4 pixels
-        let mut y = 0;
-        while y < self.height {
-            for x in 0..self.width {
-                let talive = self.status_at(y, x);
-                let balive = y + 1 < self.height && self.status_at(y + 1, x);
-                queue!(
-                    stdout,
-                    style::SetBackgroundColor(if balive {
-                        ALIVE_COL
-                    } else {
-                        style::Color::Reset
-                    }),
-                    style::Print(if talive { "▀" } else { " " })
-                )?;
-            }
-            queue!(stdout, cursor::MoveToNextLine(1))?;
-            y += 2;
-        }
-
-        queue!(stdout, cursor::RestorePosition, style::ResetColor,)?;
-
-        Ok(())
+        display_alive(stdout, &self.alive)
     }
 
     // 1. Any live cell with two or three live neighbours survives.
@@ -125,6 +86,49 @@ impl Board {
         }
         self.renders += 1
     }
+}
+
+pub fn display_alive(
+    stdout: &mut std::io::Stdout,
+    alive: &Vec<Vec<bool>>,
+) -> crossterm::Result<()> {
+    queue!(
+        stdout,
+        cursor::SavePosition,
+        cursor::MoveTo(0, 0),
+        style::SetForegroundColor(ALIVE_COL)
+    )?;
+
+    let h = alive.len();
+    let w = alive[0].len();
+
+    // use ▀▄ as 4 pixels
+    let mut y = 0;
+    while y < h {
+        for x in 0..w {
+            let talive = alive[y][x];
+            let balive = y + 1 < h && alive[y + 1][x];
+
+            queue!(
+                stdout,
+                style::Print(if talive && balive {
+                    "█"
+                } else if talive {
+                    "▀"
+                } else if balive {
+                    "▄"
+                } else {
+                    " "
+                })
+            )?;
+        }
+        queue!(stdout, cursor::MoveToNextLine(1))?;
+        y += 2;
+    }
+
+    queue!(stdout, cursor::RestorePosition, style::ResetColor,)?;
+
+    Ok(())
 }
 
 fn random_vec(w: usize, h: usize) -> Vec<Vec<bool>> {
